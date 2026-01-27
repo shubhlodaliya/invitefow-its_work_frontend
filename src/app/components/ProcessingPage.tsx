@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { CheckCircle, Download, Loader2 } from "lucide-react";
-import { ImageConfig } from "./NamePlacementEditor";
 import jsPDF from "jspdf";
 import JSZip from "jszip";
+import { ImageConfig } from "./NamePlacementEditor";
 
 interface ProcessingPageProps {
   names: string[];
@@ -14,153 +14,153 @@ interface ProcessingPageProps {
   onComplete?: () => void;
 }
 
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
 export function ProcessingPage({ names, images, imageConfigs, onComplete }: ProcessingPageProps) {
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedZipUrl, setGeneratedZipUrl] = useState<string | null>(null);
-  
+
   const namesCount = names.length;
 
   useEffect(() => {
     generatePDFs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const generatePDFs = async () => {
     try {
-      setProgress(0);
       setError(null);
-
-      // Filter enabled images
-      const enabledConfigs = imageConfigs.filter(config => config.enabled);
-      
-      if (enabledConfigs.length === 0) {
-        setError("No images are enabled for PDF generation");
-        return;
-      }
+      setIsComplete(false);
+      setProgress(0);
 
       const zip = new JSZip();
       const totalCards = names.length;
+      const orderedConfigs = [...imageConfigs].sort((a, b) => {
+        const aOrder = a.order ?? a.imageIndex ?? 0;
+        const bOrder = b.order ?? b.imageIndex ?? 0;
+        return aOrder - bOrder;
+      });
 
-      // Generate PDF for each name
       for (let i = 0; i < totalCards; i++) {
         const name = names[i];
-        
-        // Create PDF
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'px',
-          format: 'a4'
-        });
+        const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
 
-        // Add each enabled page to the PDF
-        for (let pageIndex = 0; pageIndex < enabledConfigs.length; pageIndex++) {
-          const config = enabledConfigs[pageIndex];
-          
-          if (pageIndex > 0) {
-            pdf.addPage();
-          }
+        for (let pageIndex = 0; pageIndex < orderedConfigs.length; pageIndex++) {
+          const config = orderedConfigs[pageIndex];
+          const imageUrl = images[config.imageIndex];
 
-          // Load image
-          const img = new Image();
-          await new Promise((resolve) => {
-            img.onload = resolve;
-            img.src = images[config.imageIndex];
-          });
+          const img = await loadImage(imageUrl);
 
-          // Create SVG with text
-          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          svg.setAttribute('width', img.width.toString());
-          svg.setAttribute('height', img.height.toString());
-          svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-
-          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          text.setAttribute('x', ((config.x / 100) * img.width).toString());
-          text.setAttribute('y', ((config.y / 100) * img.height).toString());
-          text.setAttribute('font-size', `${config.fontSize}px`);
-          text.setAttribute('font-family', config.fontFamily);
-          text.setAttribute('fill', config.fontColor);
-          text.setAttribute('text-anchor', 'middle');
-          text.setAttribute('dominant-baseline', 'middle');
-          text.setAttribute('font-weight', config.bold ? 'bold' : 'normal');
-          text.setAttribute('font-style', config.italic ? 'italic' : 'normal');
-          text.setAttribute('text-decoration', config.underline ? 'underline' : 'none');
-          text.setAttribute('style', 'text-shadow: 0 0 4px rgba(255,255,255,0.8)');
-          text.textContent = name;
-
-          svg.appendChild(text);
-
-          // Convert SVG to image
-          const svgData = new XMLSerializer().serializeToString(svg);
-          const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-          const svgUrl = URL.createObjectURL(svgBlob);
-
-          const svgImg = new Image();
-          await new Promise((resolve) => {
-            svgImg.onload = resolve;
-            svgImg.src = svgUrl;
-          });
-
-          // Create canvas to composite image and SVG text
-          const canvas = document.createElement('canvas');
+          // Draw base image to canvas
+          const canvas = document.createElement("canvas");
           canvas.width = img.width;
           canvas.height = img.height;
-          const ctx = canvas.getContext('2d')!;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Canvas context not available");
+          ctx.drawImage(img, 0, 0, img.width, img.height);
 
-          // Draw the base image
-          ctx.drawImage(img, 0, 0);
+          // Add text overlay if enabled or if extraText exists
+          if (config.enabled || config.extraText) {
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", img.width.toString());
+            svg.setAttribute("height", img.height.toString());
 
-          // Draw the SVG text on top
-          ctx.drawImage(svgImg, 0, 0);
+            // Main text (Excel name) - only if enabled
+            if (config.enabled) {
+              const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+              text.setAttribute("x", ((config.x / 100) * img.width).toString());
+              text.setAttribute("y", ((config.y / 100) * img.height).toString());
+              text.setAttribute("font-size", `${config.fontSize}px`);
+              text.setAttribute("font-family", config.fontFamily);
+              text.setAttribute("fill", config.fontColor);
+              text.setAttribute("text-anchor", "middle");
+              text.setAttribute("dominant-baseline", "middle");
+              text.setAttribute("font-weight", config.bold ? "bold" : "normal");
+              text.setAttribute("font-style", config.italic ? "italic" : "normal");
+              text.setAttribute("text-decoration", config.underline ? "underline" : "none");
+              text.setAttribute("style", "text-shadow: 0 0 4px rgba(255,255,255,0.8)");
+              text.textContent = name || config.sampleText;
 
-          // Clean up SVG URL
-          URL.revokeObjectURL(svgUrl);
+              svg.appendChild(text);
+            }
 
-          // Convert canvas to image (PNG for quality)
-          const finalImageData = canvas.toDataURL('image/png', 1.0);
+            // Extra text (optional additional text)
+            if (config.extraText) {
+              const extraText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+              extraText.setAttribute("x", (((config.extraX ?? 50) / 100) * img.width).toString());
+              extraText.setAttribute("y", (((config.extraY ?? 60) / 100) * img.height).toString());
+              extraText.setAttribute("font-size", `${config.fontSize}px`);
+              extraText.setAttribute("font-family", config.fontFamily);
+              extraText.setAttribute("fill", config.fontColor);
+              extraText.setAttribute("text-anchor", "middle");
+              extraText.setAttribute("dominant-baseline", "middle");
+              extraText.setAttribute("font-weight", config.bold ? "bold" : "normal");
+              extraText.setAttribute("font-style", config.italic ? "italic" : "normal");
+              extraText.setAttribute("text-decoration", config.underline ? "underline" : "none");
+              extraText.setAttribute("style", "text-shadow: 0 0 4px rgba(255,255,255,0.8)");
+              extraText.textContent = config.extraText;
 
-          // Calculate dimensions to fit A4
+              svg.appendChild(extraText);
+            }
+
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+            const svgUrl = URL.createObjectURL(svgBlob);
+
+            const svgImg = await loadImage(svgUrl);
+            ctx.drawImage(svgImg, 0, 0, img.width, img.height);
+            URL.revokeObjectURL(svgUrl);
+          }
+
+          const finalImageData = canvas.toDataURL("image/png");
+
+          if (pageIndex > 0) {
+            pdf.addPage("a4", "portrait");
+          }
+
           const pageWidth = pdf.internal.pageSize.getWidth();
           const pageHeight = pdf.internal.pageSize.getHeight();
           const imgRatio = img.width / img.height;
           const pageRatio = pageWidth / pageHeight;
-          
-          let imgWidth = pageWidth;
-          let imgHeight = pageHeight;
-          
+
+          let renderWidth = pageWidth;
+          let renderHeight = pageHeight;
+
           if (imgRatio > pageRatio) {
-            imgHeight = pageWidth / imgRatio;
+            renderHeight = pageWidth / imgRatio;
           } else {
-            imgWidth = pageHeight * imgRatio;
+            renderWidth = pageHeight * imgRatio;
           }
 
-          // Center the image
-          const x = (pageWidth - imgWidth) / 2;
-          const y = (pageHeight - imgHeight) / 2;
+          const x = (pageWidth - renderWidth) / 2;
+          const y = (pageHeight - renderHeight) / 2;
 
-          // Add final image with SVG text to PDF
-          pdf.addImage(finalImageData, 'PNG', x, y, imgWidth, imgHeight);
+          pdf.addImage(finalImageData, "PNG", x, y, renderWidth, renderHeight);
         }
 
-        // Add PDF to ZIP
-        const pdfBlob = pdf.output('blob');
+        const pdfBlob = pdf.output("blob");
         zip.file(`${name}.pdf`, pdfBlob);
 
-        // Update progress
         const currentProgress = Math.floor(((i + 1) / totalCards) * 100);
         setProgress(currentProgress);
       }
 
-      // Generate ZIP file
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipBlob = await zip.generateAsync({ type: "blob" });
       const zipUrl = URL.createObjectURL(zipBlob);
-      
       setGeneratedZipUrl(zipUrl);
       setProgress(100);
       setIsComplete(true);
     } catch (err: any) {
-      console.error('Error generating PDFs:', err);
-      setError(err.message || 'Failed to generate PDFs. Please try again.');
+      console.error("Error generating PDFs:", err);
+      setError(err?.message || "Failed to generate PDFs. Please try again.");
     }
   };
 
@@ -245,9 +245,7 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
                 Download ZIP File
               </Button>
 
-              <p className="text-xs text-gray-500">
-                The ZIP file contains all your personalized PDF cards
-              </p>
+              <p className="text-xs text-gray-500">The ZIP file contains all your personalized PDF cards</p>
             </div>
           )}
         </CardContent>
@@ -255,3 +253,5 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
     </div>
   );
 }
+
+export default ProcessingPage;

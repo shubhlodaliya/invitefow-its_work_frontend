@@ -12,6 +12,8 @@ interface UploadTemplatePageProps {
 export function UploadTemplatePage({ onNext, onBack }: UploadTemplatePageProps) {
   const [images, setImages] = useState<string[]>([]);
   const [isUploaded, setIsUploaded] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const imagePromises = acceptedFiles.map((file) => {
@@ -56,6 +58,39 @@ export function UploadTemplatePage({ onNext, onBack }: UploadTemplatePageProps) 
     if (newImages.length === 0) {
       setIsUploaded(false);
     }
+  };
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (index: number, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (index: number) => {
+    if (draggedIndex === null || draggedIndex === index) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const newImages = [...images];
+    const draggedImage = newImages[draggedIndex];
+    
+    // Remove from original position
+    newImages.splice(draggedIndex, 1);
+    // Insert at new position
+    newImages.splice(index, 0, draggedImage);
+    
+    setImages(newImages);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   return (
@@ -130,10 +165,22 @@ export function UploadTemplatePage({ onNext, onBack }: UploadTemplatePageProps) 
         {isUploaded && images.length > 0 && (
           <Card className="mb-6">
             <CardContent className="p-6">
-              <h3 className="text-lg mb-4">Image Previews</h3>
+              <h3 className="text-lg mb-4">Image Previews (Drag to reorder)</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {images.map((image, index) => (
-                  <div key={index} className="relative group">
+                  <div
+                    key={index}
+                    className={`relative group cursor-move transition-all ${
+                      draggedIndex === index ? "opacity-50" : ""
+                    } ${
+                      dragOverIndex === index ? "ring-2 ring-blue-500 scale-105" : ""
+                    }`}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(index, e)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={() => handleDrop(index)}
+                  >
                     <img
                       src={image}
                       alt={`Image ${index + 1}`}

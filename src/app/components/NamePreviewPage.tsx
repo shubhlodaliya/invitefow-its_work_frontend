@@ -16,8 +16,8 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
 
-  const enabledConfigs = imageConfigs.filter(config => config.enabled);
-  const currentName = names[currentIndex];
+  const allConfigs = imageConfigs;
+  const currentName = names[0];
 
   useEffect(() => {
     generatePreviews();
@@ -29,7 +29,7 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
     // Generate preview for first name only
     const name = names[0];
     
-    for (const config of enabledConfigs) {
+    for (const config of allConfigs) {
       const canvas = document.createElement('canvas');
       const img = new Image();
       
@@ -45,38 +45,62 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
       // Draw image
       ctx.drawImage(img, 0, 0);
 
-      // Create SVG for text
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width', img.width.toString());
-      svg.setAttribute('height', img.height.toString());
+      // Add text if enabled or if extraText exists
+      if (config.enabled || config.extraText) {
+        // Create SVG for text
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', img.width.toString());
+        svg.setAttribute('height', img.height.toString());
 
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', ((config.x / 100) * img.width).toString());
-      text.setAttribute('y', ((config.y / 100) * img.height).toString());
-      text.setAttribute('font-size', `${config.fontSize}px`);
-      text.setAttribute('font-family', config.fontFamily);
-      text.setAttribute('fill', config.fontColor);
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'middle');
-      text.setAttribute('font-weight', config.bold ? 'bold' : 'normal');
-      text.setAttribute('font-style', config.italic ? 'italic' : 'normal');
-      text.setAttribute('text-decoration', config.underline ? 'underline' : 'none');
-      text.textContent = name;
+        // Add main text only if enabled
+        if (config.enabled) {
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', ((config.x / 100) * img.width).toString());
+          text.setAttribute('y', ((config.y / 100) * img.height).toString());
+          text.setAttribute('font-size', `${config.fontSize}px`);
+          text.setAttribute('font-family', config.fontFamily);
+          text.setAttribute('fill', config.fontColor);
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('dominant-baseline', 'middle');
+          text.setAttribute('font-weight', config.bold ? 'bold' : 'normal');
+          text.setAttribute('font-style', config.italic ? 'italic' : 'normal');
+          text.setAttribute('text-decoration', config.underline ? 'underline' : 'none');
+          text.textContent = config.sampleText || name;
 
-      svg.appendChild(text);
+          svg.appendChild(text);
+        }
 
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
+        // Add extra text if present
+        if (config.extraText) {
+          const extraText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          extraText.setAttribute('x', (((config.extraX ?? 50) / 100) * img.width).toString());
+          extraText.setAttribute('y', (((config.extraY ?? 60) / 100) * img.height).toString());
+          extraText.setAttribute('font-size', `${config.fontSize}px`);
+          extraText.setAttribute('font-family', config.fontFamily);
+          extraText.setAttribute('fill', config.fontColor);
+          extraText.setAttribute('text-anchor', 'middle');
+          extraText.setAttribute('dominant-baseline', 'middle');
+          extraText.setAttribute('font-weight', config.bold ? 'bold' : 'normal');
+          extraText.setAttribute('font-style', config.italic ? 'italic' : 'normal');
+          extraText.setAttribute('text-decoration', config.underline ? 'underline' : 'none');
+          extraText.textContent = config.extraText;
 
-      const svgImg = new Image();
-      await new Promise((resolve) => {
-        svgImg.onload = resolve;
-        svgImg.src = svgUrl;
-      });
+          svg.appendChild(extraText);
+        }
 
-      ctx.drawImage(svgImg, 0, 0);
-      URL.revokeObjectURL(svgUrl);
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const svgUrl = URL.createObjectURL(svgBlob);
+
+        const svgImg = new Image();
+        await new Promise((resolve) => {
+          svgImg.onload = resolve;
+          svgImg.src = svgUrl;
+        });
+
+        ctx.drawImage(svgImg, 0, 0);
+        URL.revokeObjectURL(svgUrl);
+      }
 
       previews.push(canvas.toDataURL('image/png'));
     }
@@ -91,7 +115,7 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
   };
 
   const goToNext = () => {
-    if (currentIndex < enabledConfigs.length - 1) {
+    if (currentIndex < allConfigs.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };
@@ -124,14 +148,14 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
               </Button>
 
               <span className="text-sm font-medium">
-                Page {currentIndex + 1} of {enabledConfigs.length}
+                Page {currentIndex + 1} of {allConfigs.length}
               </span>
 
               <Button
                 variant="outline"
                 size="sm"
                 onClick={goToNext}
-                disabled={currentIndex === enabledConfigs.length - 1}
+                disabled={currentIndex === allConfigs.length - 1}
               >
                 Next Page
                 <ChevronRight className="h-4 w-4 ml-1" />

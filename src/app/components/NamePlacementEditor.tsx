@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 
 interface NamePlacementEditorProps {
   images: string[];
+  names: string[];
   onNext: (configs: ImageConfig[]) => void;
   onBack: () => void;
 }
@@ -26,10 +27,16 @@ export interface ImageConfig {
   underline: boolean;
   locked: boolean;
   enabled: boolean;
+  sampleText?: string;
+  order?: number;
+  extraText?: string;
+  extraX?: number;
+  extraY?: number;
 }
 
-export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEditorProps) {
+export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlacementEditorProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [displayOrder, setDisplayOrder] = useState<number[]>(() => images.map((_, idx) => idx));
   const [imageConfigs, setImageConfigs] = useState<ImageConfig[]>(
     images.map((_, index) => ({
       imageIndex: index,
@@ -43,42 +50,68 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
       underline: false,
       locked: false,
       enabled: false,
+      sampleText: names[0] || "Sample Name",
+      order: index,
+      extraText: undefined,
+      extraX: 50,
+      extraY: 60,
     }))
   );
 
+  const firstName = names[0] || "Sample Name";
+
   const [isDragging, setIsDragging] = useState(false);
+  const [draggingTarget, setDraggingTarget] = useState<'main' | 'extra' | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const currentConfig = imageConfigs[currentImageIndex];
+  const currentImageRealIndex = displayOrder[currentImageIndex];
+  const currentConfig = imageConfigs[currentImageRealIndex];
 
   const updateCurrentConfig = (updates: Partial<ImageConfig>) => {
     setImageConfigs((prev) =>
       prev.map((config, index) =>
-        index === currentImageIndex ? { ...config, ...updates } : config
+        index === currentImageRealIndex ? { ...config, ...updates } : config
       )
     );
   };
 
-  const handleMouseDown = () => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, target: 'main' | 'extra') => {
     if (!currentConfig.locked) {
+      e.stopPropagation();
       setIsDragging(true);
+      setDraggingTarget(target);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isDragging && !currentConfig.locked) {
+    if (isDragging && draggingTarget && !currentConfig.locked) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      updateCurrentConfig({
-        x: Math.max(0, Math.min(100, x)),
-        y: Math.max(0, Math.min(100, y)),
-      });
+      const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+      
+      if (draggingTarget === 'main') {
+        updateCurrentConfig({ x, y });
+      } else if (draggingTarget === 'extra') {
+        updateCurrentConfig({ extraX: x, extraY: y });
+      }
     }
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setDraggingTarget(null);
+  };
+
+  const setExtraText = (value?: string) => {
+    updateCurrentConfig({ extraText: value || undefined });
+  };
+
+  const togglePreset = (preset: string) => {
+    if (currentConfig.extraText === preset) {
+      setExtraText(undefined);
+    } else {
+      setExtraText(preset);
+    }
   };
 
   const goToPreviousImage = () => {
@@ -204,6 +237,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                 <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
+
           </CardContent>
         </Card>
 
@@ -228,23 +262,22 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
 
               <div
                 className={`relative bg-white border-2 rounded-lg overflow-hidden ${
-                  currentConfig.enabled ? "border-gray-300 cursor-move" : "border-gray-200 opacity-50"
+                  currentConfig.enabled || currentConfig.extraText ? "border-gray-300" : "border-gray-200 opacity-50"
                 }`}
                 style={{ aspectRatio: "3/4", maxHeight: "600px" }}
-                onMouseDown={currentConfig.enabled ? handleMouseDown : undefined}
-                onMouseMove={currentConfig.enabled ? handleMouseMove : undefined}
+                onMouseMove={currentConfig.enabled || currentConfig.extraText ? handleMouseMove : undefined}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
                 <img
-                  src={images[currentImageIndex]}
+                  src={images[currentImageRealIndex]}
                   alt={`Image ${currentImageIndex + 1}`}
                   className="w-full h-full object-contain"
                 />
                 {currentConfig.enabled && (
                   <svg
-                    className="absolute inset-0 pointer-events-none"
-                    style={{ width: "100%", height: "100%" }}
+                    className="absolute inset-0"
+                    style={{ width: "100%", height: "100%", pointerEvents: currentConfig.locked ? "none" : "auto" }}
                   >
                     <text
                       x={`${currentConfig.x}%`}
@@ -257,9 +290,33 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                       textDecoration={currentConfig.underline ? "underline" : "none"}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)" }}
+                      style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
+                      onMouseDown={(e) => handleMouseDown(e as any, 'main')}
                     >
-                      {currentConfig.fontFamily.includes('Gujarati') ? 'નમૂનો નામ' : 'Sample Name'}
+                      {currentConfig.sampleText || firstName}
+                    </text>
+                  </svg>
+                )}
+                {currentConfig.extraText && (
+                  <svg
+                    className="absolute inset-0"
+                    style={{ width: "100%", height: "100%", pointerEvents: currentConfig.locked ? "none" : "auto" }}
+                  >
+                    <text
+                      x={`${currentConfig.extraX ?? 50}%`}
+                      y={`${currentConfig.extraY ?? 60}%`}
+                      fontSize={`${currentConfig.fontSize}px`}
+                      fontFamily={currentConfig.fontFamily}
+                      fill={currentConfig.fontColor}
+                      fontWeight={currentConfig.bold ? "bold" : "normal"}
+                      fontStyle={currentConfig.italic ? "italic" : "normal"}
+                      textDecoration={currentConfig.underline ? "underline" : "none"}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
+                      onMouseDown={(e) => handleMouseDown(e as any, 'extra')}
+                    >
+                      {currentConfig.extraText}
                     </text>
                   </svg>
                 )}
@@ -273,7 +330,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
               <CardContent className="p-6 space-y-6">
                 <h3 className="text-lg">Image {currentImageIndex + 1} Settings</h3>
 
-                {!currentConfig.enabled && (
+                {!currentConfig.enabled && !currentConfig.extraText && (
                   <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-900">
                     Name placement is disabled for this image. Enable it to customize.
                   </div>
@@ -287,7 +344,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                     min={12}
                     max={72}
                     step={1}
-                    disabled={!currentConfig.enabled}
+                    disabled={!currentConfig.enabled && !currentConfig.extraText}
                   />
                 </div>
 
@@ -299,7 +356,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                       value={currentConfig.fontColor}
                       onChange={(e) => updateCurrentConfig({ fontColor: e.target.value })}
                       className="w-20 h-10 cursor-pointer"
-                      disabled={!currentConfig.enabled}
+                      disabled={!currentConfig.enabled && !currentConfig.extraText}
                     />
                     <Input
                       type="text"
@@ -307,7 +364,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                       onChange={(e) => updateCurrentConfig({ fontColor: e.target.value })}
                       placeholder="#000000"
                       className="flex-1"
-                      disabled={!currentConfig.enabled}
+                      disabled={!currentConfig.enabled && !currentConfig.extraText}
                     />
                   </div>
                 </div>
@@ -317,7 +374,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                   <Select
                     value={currentConfig.fontFamily}
                     onValueChange={(value) => updateCurrentConfig({ fontFamily: value })}
-                    disabled={!currentConfig.enabled}
+                    disabled={!currentConfig.enabled && !currentConfig.extraText}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -339,7 +396,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                       variant={currentConfig.bold ? "default" : "outline"}
                       size="sm"
                       onClick={() => updateCurrentConfig({ bold: !currentConfig.bold })}
-                      disabled={!currentConfig.enabled}
+                      disabled={!currentConfig.enabled && !currentConfig.extraText}
                     >
                       <strong>B</strong>
                     </Button>
@@ -347,7 +404,7 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                       variant={currentConfig.italic ? "default" : "outline"}
                       size="sm"
                       onClick={() => updateCurrentConfig({ italic: !currentConfig.italic })}
-                      disabled={!currentConfig.enabled}
+                      disabled={!currentConfig.enabled && !currentConfig.extraText}
                     >
                       <em>I</em>
                     </Button>
@@ -355,18 +412,50 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
                       variant={currentConfig.underline ? "default" : "outline"}
                       size="sm"
                       onClick={() => updateCurrentConfig({ underline: !currentConfig.underline })}
-                      disabled={!currentConfig.enabled}
+                      disabled={!currentConfig.enabled && !currentConfig.extraText}
                     >
                       <u>U</u>
                     </Button>
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Additional Text (Optional)</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant={currentConfig.extraText === "સર્વો" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => togglePreset("સર્વો")}
+                    >
+                      સર્વો
+                    </Button>
+                    <Button
+                      variant={currentConfig.extraText === "સજોડે" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => togglePreset("સજોડે")}
+                    >
+                      સજોડે
+                    </Button>
+                    <Button
+                      variant={currentConfig.extraText && currentConfig.extraText !== "સર્વો" && currentConfig.extraText !== "સજોડે" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setExtraText(currentConfig.extraText ? undefined : "")}
+                    >
+                      Add text box
+                    </Button>
+                  </div>
+                  <Input
+                    value={currentConfig.extraText || ""}
+                    onChange={(e) => setExtraText(e.target.value || undefined)}
+                    placeholder="Write custom text"
+                  />
+                </div>
+
                 <Button
                   className="w-full"
                   variant={currentConfig.locked ? "default" : "outline"}
                   onClick={() => updateCurrentConfig({ locked: !currentConfig.locked })}
-                  disabled={!currentConfig.enabled}
+                  disabled={!currentConfig.enabled && !currentConfig.extraText}
                 >
                   {currentConfig.locked ? (
                     <>
@@ -396,7 +485,10 @@ export function NamePlacementEditor({ images, onNext, onBack }: NamePlacementEdi
               <Button
                 size="lg"
                 className="w-full"
-                onClick={() => onNext(imageConfigs)}
+                onClick={() => {
+                  const orderedConfigs = displayOrder.map((idx, order) => ({ ...imageConfigs[idx], order }));
+                  onNext(orderedConfigs);
+                }}
               >
                 Next - Merge Settings
               </Button>
