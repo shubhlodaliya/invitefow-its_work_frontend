@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Label } from "@/app/components/ui/label";
@@ -20,6 +20,9 @@ export interface ImageConfig {
   x: number;
   y: number;
   fontSize: number;
+  designHeight?: number;
+  renderHeight?: number;
+  renderWidth?: number;
   fontFamily: string;
   fontColor: string;
   bold: boolean;
@@ -43,6 +46,9 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
       x: 50,
       y: 50,
       fontSize: 24,
+      designHeight: 850,
+      renderHeight: 850,
+      renderWidth: 850,
       fontFamily: "Noto Sans Gujarati",
       fontColor: "#000000",
       bold: false,
@@ -63,6 +69,49 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
   const [isDragging, setIsDragging] = useState(false);
   const [draggingTarget, setDraggingTarget] = useState<'main' | 'extra' | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [renderMetrics, setRenderMetrics] = useState<{ rw: number; rh: number; offsetX: number; offsetY: number } | null>(null);
+
+  const computeRenderMetrics = () => {
+    const container = containerRef.current;
+    const imgEl = imgRef.current;
+    if (!container || !imgEl) return;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const iw = imgEl.naturalWidth || imgEl.width;
+    const ih = imgEl.naturalHeight || imgEl.height;
+    if (!cw || !ch || !iw || !ih) return;
+    const imgAR = iw / ih;
+    const contAR = cw / ch;
+    let rw: number, rh: number, offsetX = 0, offsetY = 0;
+    if (imgAR > contAR) {
+      // Image fits by width
+      rw = cw;
+      rh = cw / imgAR;
+      offsetY = (ch - rh) / 2;
+    } else {
+      // Image fits by height
+      rh = ch;
+      rw = ch * imgAR;
+      offsetX = (cw - rw) / 2;
+    }
+    setRenderMetrics({ rw, rh, offsetX, offsetY });
+
+    // Persist the rendered height used during placement so PDF can scale font size consistently
+    const cfg = imageConfigs[displayOrder[currentImageIndex]];
+    if (cfg && (cfg.designHeight !== rh || cfg.renderHeight !== rh || cfg.renderWidth !== rw)) {
+      updateCurrentConfig({ designHeight: rh, renderHeight: rh, renderWidth: rw });
+    }
+  };
+
+  useEffect(() => {
+    computeRenderMetrics();
+    const handler = () => computeRenderMetrics();
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentImageIndex]);
 
   const currentImageRealIndex = displayOrder[currentImageIndex];
   const currentConfig = imageConfigs[currentImageRealIndex];
@@ -86,8 +135,12 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isDragging && draggingTarget && !currentConfig.locked) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-      const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+      const rm = renderMetrics;
+      if (!rm) return;
+      const localX = e.clientX - rect.left - rm.offsetX;
+      const localY = e.clientY - rect.top - rm.offsetY;
+      const x = Math.max(0, Math.min(100, (localX / rm.rw) * 100));
+      const y = Math.max(0, Math.min(100, (localY / rm.rh) * 100));
       
       if (draggingTarget === 'main') {
         updateCurrentConfig({ x, y });
@@ -268,57 +321,64 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                 onMouseMove={currentConfig.enabled || currentConfig.extraText ? handleMouseMove : undefined}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                ref={containerRef}
               >
                 <img
                   src={images[currentImageRealIndex]}
                   alt={`Image ${currentImageIndex + 1}`}
                   className="w-full h-full object-contain"
+                  ref={imgRef}
+                  onLoad={computeRenderMetrics}
                 />
-                {currentConfig.enabled && (
-                  <svg
-                    className="absolute inset-0"
-                    style={{ width: "100%", height: "100%", pointerEvents: currentConfig.locked ? "none" : "auto" }}
-                  >
-                    <text
-                      x={`${currentConfig.x}%`}
-                      y={`${currentConfig.y}%`}
-                      fontSize={`${currentConfig.fontSize}px`}
-                      fontFamily={currentConfig.fontFamily}
-                      fill={currentConfig.fontColor}
-                      fontWeight={currentConfig.bold ? "bold" : "normal"}
-                      fontStyle={currentConfig.italic ? "italic" : "normal"}
-                      textDecoration={currentConfig.underline ? "underline" : "none"}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
-                      onMouseDown={(e) => handleMouseDown(e as any, 'main')}
-                    >
-                      {currentConfig.sampleText || firstName}
-                    </text>
-                  </svg>
-                )}
-                {currentConfig.extraText && (
-                  <svg
-                    className="absolute inset-0"
-                    style={{ width: "100%", height: "100%", pointerEvents: currentConfig.locked ? "none" : "auto" }}
-                  >
-                    <text
-                      x={`${currentConfig.extraX ?? 50}%`}
-                      y={`${currentConfig.extraY ?? 60}%`}
-                      fontSize={`${currentConfig.fontSize}px`}
-                      fontFamily={currentConfig.fontFamily}
-                      fill={currentConfig.fontColor}
-                      fontWeight={currentConfig.bold ? "bold" : "normal"}
-                      fontStyle={currentConfig.italic ? "italic" : "normal"}
-                      textDecoration={currentConfig.underline ? "underline" : "none"}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
-                      onMouseDown={(e) => handleMouseDown(e as any, 'extra')}
-                    >
-                      {currentConfig.extraText}
-                    </text>
-                  </svg>
+                {renderMetrics && (
+                  <>
+                    {currentConfig.enabled && (
+                      <svg
+                        className="absolute"
+                        style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh, pointerEvents: currentConfig.locked ? "none" : "auto" }}
+                      >
+                        <text
+                          x={`${currentConfig.x}%`}
+                          y={`${currentConfig.y}%`}
+                          fontSize={`${currentConfig.fontSize}px`}
+                          fontFamily={currentConfig.fontFamily}
+                          fill={currentConfig.fontColor}
+                          fontWeight={currentConfig.bold ? "bold" : "normal"}
+                          fontStyle={currentConfig.italic ? "italic" : "normal"}
+                          textDecoration={currentConfig.underline ? "underline" : "none"}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
+                          onMouseDown={(e) => handleMouseDown(e as any, 'main')}
+                        >
+                          {currentConfig.sampleText || firstName}
+                        </text>
+                      </svg>
+                    )}
+                    {currentConfig.extraText && (
+                      <svg
+                        className="absolute"
+                        style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh, pointerEvents: currentConfig.locked ? "none" : "auto" }}
+                      >
+                        <text
+                          x={`${currentConfig.extraX ?? 50}%`}
+                          y={`${currentConfig.extraY ?? 60}%`}
+                          fontSize={`${currentConfig.fontSize}px`}
+                          fontFamily={currentConfig.fontFamily}
+                          fill={currentConfig.fontColor}
+                          fontWeight={currentConfig.bold ? "bold" : "normal"}
+                          fontStyle={currentConfig.italic ? "italic" : "normal"}
+                          textDecoration={currentConfig.underline ? "underline" : "none"}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
+                          onMouseDown={(e) => handleMouseDown(e as any, 'extra')}
+                        >
+                          {currentConfig.extraText}
+                        </text>
+                      </svg>
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>

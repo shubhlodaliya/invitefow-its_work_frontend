@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -15,6 +15,9 @@ interface NamePreviewPageProps {
 export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }: NamePreviewPageProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [renderMetrics, setRenderMetrics] = useState<{ rw: number; rh: number; offsetX: number; offsetY: number } | null>(null);
 
   const allConfigs = imageConfigs;
   const currentName = names[0];
@@ -23,11 +26,37 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
     generatePreviews();
   }, []);
 
+  const computeRenderMetrics = () => {
+    const container = containerRef.current;
+    const imgEl = imgRef.current;
+    if (!container || !imgEl) return;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const iw = imgEl.naturalWidth || imgEl.width;
+    const ih = imgEl.naturalHeight || imgEl.height;
+    if (!cw || !ch || !iw || !ih) return;
+    const imgAR = iw / ih;
+    const contAR = cw / ch;
+    let rw: number, rh: number, offsetX = 0, offsetY = 0;
+    if (imgAR > contAR) {
+      rw = cw;
+      rh = cw / imgAR;
+      offsetY = (ch - rh) / 2;
+    } else {
+      rh = ch;
+      rw = ch * imgAR;
+      offsetX = (cw - rw) / 2;
+    }
+    setRenderMetrics({ rw, rh, offsetX, offsetY });
+  };
+
   const generatePreviews = async () => {
     const previews: string[] = [];
 
     // Generate preview for first name only
     const name = names[0];
+    // Match NamePlacementEditor visual sizing: its preview container uses ~850px height
+    const previewTargetHeight = 850;
     
     for (const config of allConfigs) {
       const canvas = document.createElement('canvas');
@@ -38,25 +67,29 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
         img.src = images[config.imageIndex];
       });
 
-      canvas.width = img.width;
-      canvas.height = img.height;
+      // Render preview at fixed visual height to match editor
+      const targetHeight = previewTargetHeight;
+      const targetWidth = Math.round((img.width / img.height) * targetHeight);
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const ctx = canvas.getContext('2d')!;
       
       // Draw image
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
       // Add text if enabled or if extraText exists
       if (config.enabled || config.extraText) {
         // Create SVG for text
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('width', img.width.toString());
-        svg.setAttribute('height', img.height.toString());
+        svg.setAttribute('width', targetWidth.toString());
+        svg.setAttribute('height', targetHeight.toString());
 
         // Add main text only if enabled
         if (config.enabled) {
           const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          text.setAttribute('x', ((config.x / 100) * img.width).toString());
-          text.setAttribute('y', ((config.y / 100) * img.height).toString());
+          text.setAttribute('x', ((config.x / 100) * targetWidth).toString());
+          text.setAttribute('y', ((config.y / 100) * targetHeight).toString());
+          // Use the exact font size from editor
           text.setAttribute('font-size', `${config.fontSize}px`);
           text.setAttribute('font-family', config.fontFamily);
           text.setAttribute('fill', config.fontColor);
@@ -73,8 +106,9 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
         // Add extra text if present
         if (config.extraText) {
           const extraText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          extraText.setAttribute('x', (((config.extraX ?? 50) / 100) * img.width).toString());
-          extraText.setAttribute('y', (((config.extraY ?? 60) / 100) * img.height).toString());
+          extraText.setAttribute('x', (((config.extraX ?? 50) / 100) * targetWidth).toString());
+          extraText.setAttribute('y', (((config.extraY ?? 60) / 100) * targetHeight).toString());
+          // Use the exact font size from editor
           extraText.setAttribute('font-size', `${config.fontSize}px`);
           extraText.setAttribute('font-family', config.fontFamily);
           extraText.setAttribute('fill', config.fontColor);
@@ -98,7 +132,7 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
           svgImg.src = svgUrl;
         });
 
-        ctx.drawImage(svgImg, 0, 0);
+        ctx.drawImage(svgImg, 0, 0, targetWidth, targetHeight);
         URL.revokeObjectURL(svgUrl);
       }
 
@@ -162,21 +196,80 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
               </Button>
             </div>
 
-            {previewImages.length > 0 && (
-              <div className="bg-white border-2 rounded-lg p-4 flex justify-center">
-                <img
-                  src={previewImages[currentIndex]}
-                  alt={`Preview ${currentIndex + 1}`}
-                  className="max-w-full max-h-[600px] object-contain"
-                />
-              </div>
-            )}
-
-            {previewImages.length === 0 && (
-              <div className="bg-white border-2 rounded-lg p-12 text-center">
-                <p className="text-gray-500">Generating preview...</p>
-              </div>
-            )}
+            {(() => {
+              const cfg = allConfigs[currentIndex];
+              const imgSrc = images[cfg.imageIndex];
+              return (
+                <div className="bg-white border-2 rounded-lg p-4 flex justify-center">
+                  <div
+                    className="relative w-full"
+                    style={{ maxHeight: 850 }}
+                  >
+                    <div
+                      className="relative bg-white rounded-lg overflow-hidden"
+                      style={{ width: "100%", height: 850 }}
+                      ref={containerRef}
+                    >
+                      <img
+                        src={imgSrc}
+                        alt={`Preview ${currentIndex + 1}`}
+                        className="w-full h-full object-contain"
+                        ref={imgRef}
+                        onLoad={computeRenderMetrics}
+                      />
+                      {renderMetrics && (
+                        <>
+                          {cfg.enabled && (
+                            <svg
+                              className="absolute"
+                              style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh }}
+                            >
+                              <text
+                                x={`${cfg.x}%`}
+                                y={`${cfg.y}%`}
+                                fontSize={`${cfg.fontSize}px`}
+                                fontFamily={cfg.fontFamily}
+                                fill={cfg.fontColor}
+                                fontWeight={cfg.bold ? "bold" : "normal"}
+                                fontStyle={cfg.italic ? "italic" : "normal"}
+                                textDecoration={cfg.underline ? "underline" : "none"}
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                style={{ textRendering: "geometricPrecision" }}
+                              >
+                                {cfg.sampleText || currentName}
+                              </text>
+                            </svg>
+                          )}
+                          {cfg.extraText && (
+                            <svg
+                              className="absolute"
+                              style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh }}
+                            >
+                              <text
+                                x={`${cfg.extraX ?? 50}%`}
+                                y={`${cfg.extraY ?? 60}%`}
+                                fontSize={`${cfg.fontSize}px`}
+                                fontFamily={cfg.fontFamily}
+                                fill={cfg.fontColor}
+                                fontWeight={cfg.bold ? "bold" : "normal"}
+                                fontStyle={cfg.italic ? "italic" : "normal"}
+                                textDecoration={cfg.underline ? "underline" : "none"}
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                style={{ textRendering: "geometricPrecision" }}
+                              >
+                                {cfg.extraText}
+                              </text>
+                            </svg>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 

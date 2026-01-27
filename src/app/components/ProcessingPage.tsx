@@ -22,6 +22,21 @@ const loadImage = (src: string) =>
     img.src = src;
   });
 
+const ensureFontsLoaded = async (configs: ImageConfig[]) => {
+  if (!("fonts" in document)) return;
+  const uniqueFamilies = Array.from(new Set(configs.map((c) => c.fontFamily).filter(Boolean)));
+  const maxSize = Math.max(...configs.map((c) => c.fontSize || 16), 16);
+  const loaders = uniqueFamilies.flatMap((family) => {
+    const quoted = family.includes(" ") ? `"${family}"` : family;
+    return [
+      document.fonts.load(`400 ${maxSize}px ${quoted}`),
+      document.fonts.load(`700 ${maxSize}px ${quoted}`),
+    ];
+  });
+  await Promise.allSettled(loaders);
+  await (document.fonts as FontFaceSet).ready;
+};
+
 export function ProcessingPage({ names, images, imageConfigs, onComplete }: ProcessingPageProps) {
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
@@ -41,6 +56,9 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
       setIsComplete(false);
       setProgress(0);
 
+      // Ensure webfonts are available before rasterizing SVG to image
+      await ensureFontsLoaded(imageConfigs);
+
       const zip = new JSZip();
       const totalCards = names.length;
       const orderedConfigs = [...imageConfigs].sort((a, b) => {
@@ -59,6 +77,11 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
 
           const img = await loadImage(imageUrl);
 
+          // Scale font size: preview renders at designHeight, image is at natural height
+          const previewHeight = config.renderHeight || config.designHeight || 850;
+          const fontScaleFactor = img.height / previewHeight;
+          const scaledFontSize = Math.round(config.fontSize * fontScaleFactor);
+
           // Draw base image to canvas
           const canvas = document.createElement("canvas");
           canvas.width = img.width;
@@ -67,45 +90,42 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
           if (!ctx) throw new Error("Canvas context not available");
           ctx.drawImage(img, 0, 0, img.width, img.height);
 
-          // Add text overlay if enabled or if extraText exists
+          // Render text using SVG at scaled font size
           if (config.enabled || config.extraText) {
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             svg.setAttribute("width", img.width.toString());
             svg.setAttribute("height", img.height.toString());
+            svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
 
-            // Main text (Excel name) - only if enabled
+            // Main text
             if (config.enabled) {
               const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
               text.setAttribute("x", ((config.x / 100) * img.width).toString());
               text.setAttribute("y", ((config.y / 100) * img.height).toString());
-              text.setAttribute("font-size", `${config.fontSize}px`);
-              text.setAttribute("font-family", config.fontFamily);
+              text.setAttribute("font-size", `${scaledFontSize}px`);
+              text.setAttribute("font-family", `"${config.fontFamily}"`);
               text.setAttribute("fill", config.fontColor);
               text.setAttribute("text-anchor", "middle");
               text.setAttribute("dominant-baseline", "middle");
               text.setAttribute("font-weight", config.bold ? "bold" : "normal");
               text.setAttribute("font-style", config.italic ? "italic" : "normal");
-              text.setAttribute("text-decoration", config.underline ? "underline" : "none");
               text.textContent = name || config.sampleText;
-
               svg.appendChild(text);
             }
 
-            // Extra text (optional additional text)
+            // Extra text
             if (config.extraText) {
               const extraText = document.createElementNS("http://www.w3.org/2000/svg", "text");
               extraText.setAttribute("x", ((config.extraX ?? 50) / 100) * img.width);
               extraText.setAttribute("y", ((config.extraY ?? 60) / 100) * img.height);
-              extraText.setAttribute("font-size", `${config.fontSize}px`);
-              extraText.setAttribute("font-family", config.fontFamily);
+              extraText.setAttribute("font-size", `${scaledFontSize}px`);
+              extraText.setAttribute("font-family", `"${config.fontFamily}"`);
               extraText.setAttribute("fill", config.fontColor);
               extraText.setAttribute("text-anchor", "middle");
               extraText.setAttribute("dominant-baseline", "middle");
               extraText.setAttribute("font-weight", config.bold ? "bold" : "normal");
               extraText.setAttribute("font-style", config.italic ? "italic" : "normal");
-              extraText.setAttribute("text-decoration", config.underline ? "underline" : "none");
               extraText.textContent = config.extraText;
-
               svg.appendChild(extraText);
             }
 
