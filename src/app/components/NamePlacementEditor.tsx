@@ -243,9 +243,9 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
 
         <div className="grid lg:grid-cols-[1fr_400px] gap-6">
           {/* Left: Preview Canvas */}
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
+          <Card className="flex items-center justify-center">
+            <CardContent className="p-6 w-full flex flex-col items-center">
+              <div className="flex items-center justify-between mb-4 w-full">
                 <h3 className="text-lg">
                   Image {currentImageIndex + 1} Preview
                 </h3>
@@ -264,7 +264,7 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                 className={`relative bg-white border-2 rounded-lg overflow-hidden ${
                   currentConfig.enabled || currentConfig.extraText ? "border-gray-300" : "border-gray-200 opacity-50"
                 }`}
-                style={{ aspectRatio: "3/4", maxHeight: "600px" }}
+                style={{ aspectRatio: "3/4", maxHeight: "850px", width: "100%" }}
                 onMouseMove={currentConfig.enabled || currentConfig.extraText ? handleMouseMove : undefined}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}

@@ -86,7 +86,6 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
               text.setAttribute("font-weight", config.bold ? "bold" : "normal");
               text.setAttribute("font-style", config.italic ? "italic" : "normal");
               text.setAttribute("text-decoration", config.underline ? "underline" : "none");
-              text.setAttribute("style", "text-shadow: 0 0 4px rgba(255,255,255,0.8)");
               text.textContent = name || config.sampleText;
 
               svg.appendChild(text);
@@ -95,8 +94,8 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
             // Extra text (optional additional text)
             if (config.extraText) {
               const extraText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-              extraText.setAttribute("x", (((config.extraX ?? 50) / 100) * img.width).toString());
-              extraText.setAttribute("y", (((config.extraY ?? 60) / 100) * img.height).toString());
+              extraText.setAttribute("x", ((config.extraX ?? 50) / 100) * img.width);
+              extraText.setAttribute("y", ((config.extraY ?? 60) / 100) * img.height);
               extraText.setAttribute("font-size", `${config.fontSize}px`);
               extraText.setAttribute("font-family", config.fontFamily);
               extraText.setAttribute("fill", config.fontColor);
@@ -105,7 +104,6 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
               extraText.setAttribute("font-weight", config.bold ? "bold" : "normal");
               extraText.setAttribute("font-style", config.italic ? "italic" : "normal");
               extraText.setAttribute("text-decoration", config.underline ? "underline" : "none");
-              extraText.setAttribute("style", "text-shadow: 0 0 4px rgba(255,255,255,0.8)");
               extraText.textContent = config.extraText;
 
               svg.appendChild(extraText);
