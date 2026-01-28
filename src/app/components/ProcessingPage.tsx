@@ -115,8 +115,9 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
 
           // Draw text at scaled size for high resolution
           if (config.enabled || config.extraText) {
-            ctx.textAlign = "center";
+            ctx.textAlign = "left";
             ctx.textBaseline = "middle";
+            ctx.direction = "ltr";
             ctx.fillStyle = config.fontColor;
             
             let fontStyle = "";

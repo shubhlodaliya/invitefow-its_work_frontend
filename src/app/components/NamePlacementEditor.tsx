@@ -348,8 +348,9 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                           fontWeight={currentConfig.bold ? "bold" : "normal"}
                           fontStyle={currentConfig.italic ? "italic" : "normal"}
                           textDecoration={currentConfig.underline ? "underline" : "none"}
-                          textAnchor="middle"
+                          textAnchor="start"
                           dominantBaseline="middle"
+                          direction="ltr"
                           style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
                           onMouseDown={(e) => handleMouseDown(e as any, 'main')}
                         >
@@ -371,8 +372,9 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                           fontWeight={currentConfig.bold ? "bold" : "normal"}
                           fontStyle={currentConfig.italic ? "italic" : "normal"}
                           textDecoration={currentConfig.underline ? "underline" : "none"}
-                          textAnchor="middle"
+                          textAnchor="start"
                           dominantBaseline="middle"
+                          direction="ltr"
                           style={{ textShadow: "0 0 4px rgba(255,255,255,0.8)", cursor: currentConfig.locked ? "default" : "move" }}
                           onMouseDown={(e) => handleMouseDown(e as any, 'extra')}
                         >

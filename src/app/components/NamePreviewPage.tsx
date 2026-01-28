@@ -168,49 +168,7 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
           This shows how "{currentName}" will appear on your cards. All names will be positioned the same way.
         </p>
 
-        {(() => {
-          const cfg = allConfigs[currentIndex];
-          
-          return (
-            <div className="bg-white border rounded-lg p-4 mb-6">
-              <h2 className="font-semibold text-lg mb-3">Text Details</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {cfg.enabled && (
-                  <>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Font Size</p>
-                      <p className="text-lg font-bold">{cfg.fontSize}px</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Position X</p>
-                      <p className="text-lg font-bold">{cfg.x.toFixed(1)}%</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Position Y</p>
-                      <p className="text-lg font-bold">{cfg.y.toFixed(1)}%</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Font</p>
-                      <p className="text-sm font-semibold truncate">{cfg.fontFamily}</p>
-                    </div>
-                  </>
-                )}
-                {cfg.extraText && (
-                  <>
-                    <div className="md:col-start-1">
-                      <p className="text-xs text-gray-500 uppercase">Extra Text X</p>
-                      <p className="text-lg font-bold">{(cfg.extraX ?? 50).toFixed(1)}%</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Extra Text Y</p>
-                      <p className="text-lg font-bold">{(cfg.extraY ?? 60).toFixed(1)}%</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })()}
+
 
         <Card className="mb-6">
           <CardContent className="p-6">
@@ -278,45 +236,13 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
                                   fontWeight={cfg.bold ? "bold" : "normal"}
                                   fontStyle={cfg.italic ? "italic" : "normal"}
                                   textDecoration={cfg.underline ? "underline" : "none"}
-                                  textAnchor="middle"
+                                  textAnchor="start"
                                   dominantBaseline="middle"
+                                  direction="ltr"
                                   style={{ textRendering: "geometricPrecision" }}
                                 >
                                   {cfg.sampleText || currentName}
                                 </text>
-                              </svg>
-                              {/* Position guide lines */}
-                              <svg
-                                className="absolute"
-                                style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh, pointerEvents: "none" }}
-                              >
-                                {/* Vertical guide line */}
-                                <line
-                                  x1={`${cfg.x}%`}
-                                  y1="0%"
-                                  x2={`${cfg.x}%`}
-                                  y2="100%"
-                                  stroke="rgba(255, 0, 0, 0.3)"
-                                  strokeWidth="1"
-                                  strokeDasharray="4,4"
-                                />
-                                {/* Horizontal guide line */}
-                                <line
-                                  x1="0%"
-                                  y1={`${cfg.y}%`}
-                                  x2="100%"
-                                  y2={`${cfg.y}%`}
-                                  stroke="rgba(255, 0, 0, 0.3)"
-                                  strokeWidth="1"
-                                  strokeDasharray="4,4"
-                                />
-                                {/* Center point marker */}
-                                <circle
-                                  cx={`${cfg.x}%`}
-                                  cy={`${cfg.y}%`}
-                                  r="4"
-                                  fill="rgba(255, 0, 0, 0.5)"
-                                />
                               </svg>
                             </>
                           )}
@@ -335,45 +261,13 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
                                   fontWeight={cfg.bold ? "bold" : "normal"}
                                   fontStyle={cfg.italic ? "italic" : "normal"}
                                   textDecoration={cfg.underline ? "underline" : "none"}
-                                  textAnchor="middle"
+                                  textAnchor="start"
                                   dominantBaseline="middle"
+                                  direction="ltr"
                                   style={{ textRendering: "geometricPrecision" }}
                                 >
                                   {cfg.extraText}
                                 </text>
-                              </svg>
-                              {/* Extra text guide lines */}
-                              <svg
-                                className="absolute"
-                                style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh, pointerEvents: "none" }}
-                              >
-                                {/* Vertical guide line */}
-                                <line
-                                  x1={`${cfg.extraX ?? 50}%`}
-                                  y1="0%"
-                                  x2={`${cfg.extraX ?? 50}%`}
-                                  y2="100%"
-                                  stroke="rgba(0, 0, 255, 0.3)"
-                                  strokeWidth="1"
-                                  strokeDasharray="4,4"
-                                />
-                                {/* Horizontal guide line */}
-                                <line
-                                  x1="0%"
-                                  y1={`${cfg.extraY ?? 60}%`}
-                                  x2="100%"
-                                  y2={`${cfg.extraY ?? 60}%`}
-                                  stroke="rgba(0, 0, 255, 0.3)"
-                                  strokeWidth="1"
-                                  strokeDasharray="4,4"
-                                />
-                                {/* Center point marker */}
-                                <circle
-                                  cx={`${cfg.extraX ?? 50}%`}
-                                  cy={`${cfg.extraY ?? 60}%`}
-                                  r="4"
-                                  fill="rgba(0, 0, 255, 0.5)"
-                                />
                               </svg>
                             </>
                           )}
@@ -392,10 +286,7 @@ export function NamePreviewPage({ names, images, imageConfigs, onNext, onBack }:
             ✓ This preview shows exactly how your {names.length} card{names.length > 1 ? 's' : ''} will look in the PDF
           </p>
           <p className="text-sm text-blue-900 mt-1">
-            ✓ The font size you set ({(() => { const cfg = allConfigs[currentIndex]; return cfg.fontSize; })()}px) will be the same in the output PDF
-          </p>
-          <p className="text-sm text-blue-900 mt-1">
-            ✓ Red guide lines show main text position • Blue guide lines show extra text position (if any)
+            ✓ The font size and position you set will be the same in the output PDF
           </p>
         </div>
 
