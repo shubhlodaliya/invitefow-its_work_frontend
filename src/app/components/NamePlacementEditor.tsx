@@ -23,6 +23,8 @@ export interface ImageConfig {
   designHeight?: number;
   renderHeight?: number;
   renderWidth?: number;
+  actualImageWidth?: number;
+  actualImageHeight?: number;
   fontFamily: string;
   fontColor: string;
   bold: boolean;
@@ -100,8 +102,8 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
 
     // Persist the rendered height used during placement so PDF can scale font size consistently
     const cfg = imageConfigs[displayOrder[currentImageIndex]];
-    if (cfg && (cfg.designHeight !== rh || cfg.renderHeight !== rh || cfg.renderWidth !== rw)) {
-      updateCurrentConfig({ designHeight: rh, renderHeight: rh, renderWidth: rw });
+    if (cfg && (cfg.designHeight !== rh || cfg.renderHeight !== rh || cfg.renderWidth !== rw || cfg.actualImageWidth !== iw || cfg.actualImageHeight !== ih)) {
+      updateCurrentConfig({ designHeight: rh, renderHeight: rh, renderWidth: rw, actualImageWidth: iw, actualImageHeight: ih });
     }
   };
 

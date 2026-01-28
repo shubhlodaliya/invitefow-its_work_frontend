@@ -77,91 +77,73 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
 
           const img = await loadImage(imageUrl);
 
-          // Scale font size: preview renders at designHeight, image is at natural height
-          const previewHeight = config.renderHeight || config.designHeight || 850;
-          const fontScaleFactor = img.height / previewHeight;
-          const scaledFontSize = Math.round(config.fontSize * fontScaleFactor);
-
-          // Draw base image to canvas
-          const canvas = document.createElement("canvas");
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) throw new Error("Canvas context not available");
-          ctx.drawImage(img, 0, 0, img.width, img.height);
-
-          // Render text using SVG at scaled font size
-          if (config.enabled || config.extraText) {
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.setAttribute("width", img.width.toString());
-            svg.setAttribute("height", img.height.toString());
-            svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-
-            // Main text
-            if (config.enabled) {
-              const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-              text.setAttribute("x", ((config.x / 100) * img.width).toString());
-              text.setAttribute("y", ((config.y / 100) * img.height).toString());
-              text.setAttribute("font-size", `${scaledFontSize}px`);
-              text.setAttribute("font-family", `"${config.fontFamily}"`);
-              text.setAttribute("fill", config.fontColor);
-              text.setAttribute("text-anchor", "middle");
-              text.setAttribute("dominant-baseline", "middle");
-              text.setAttribute("font-weight", config.bold ? "bold" : "normal");
-              text.setAttribute("font-style", config.italic ? "italic" : "normal");
-              text.textContent = name || config.sampleText;
-              svg.appendChild(text);
-            }
-
-            // Extra text
-            if (config.extraText) {
-              const extraText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-              extraText.setAttribute("x", ((config.extraX ?? 50) / 100) * img.width);
-              extraText.setAttribute("y", ((config.extraY ?? 60) / 100) * img.height);
-              extraText.setAttribute("font-size", `${scaledFontSize}px`);
-              extraText.setAttribute("font-family", `"${config.fontFamily}"`);
-              extraText.setAttribute("fill", config.fontColor);
-              extraText.setAttribute("text-anchor", "middle");
-              extraText.setAttribute("dominant-baseline", "middle");
-              extraText.setAttribute("font-weight", config.bold ? "bold" : "normal");
-              extraText.setAttribute("font-style", config.italic ? "italic" : "normal");
-              extraText.textContent = config.extraText;
-              svg.appendChild(extraText);
-            }
-
-            const svgData = new XMLSerializer().serializeToString(svg);
-            const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-            const svgUrl = URL.createObjectURL(svgBlob);
-
-            const svgImg = await loadImage(svgUrl);
-            ctx.drawImage(svgImg, 0, 0, img.width, img.height);
-            URL.revokeObjectURL(svgUrl);
-          }
-
-          const finalImageData = canvas.toDataURL("image/png");
-
           if (pageIndex > 0) {
             pdf.addPage("a4", "portrait");
           }
 
+          // PDF page dimensions
           const pageWidth = pdf.internal.pageSize.getWidth();
           const pageHeight = pdf.internal.pageSize.getHeight();
+          
+          // Render at high resolution (4x) for quality, then scale down in PDF
+          const scale = 4;
+          const canvasWidth = pageWidth * scale;
+          const canvasHeight = pageHeight * scale;
+          
+          // Create high-resolution canvas
+          const canvas = document.createElement("canvas");
+          canvas.width = canvasWidth;
+          canvas.height = canvasHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Canvas context not available");
+
+          // Calculate image position to fit canvas
           const imgRatio = img.width / img.height;
           const pageRatio = pageWidth / pageHeight;
-
-          let renderWidth = pageWidth;
-          let renderHeight = pageHeight;
-
+          let renderWidth = canvasWidth;
+          let renderHeight = canvasHeight;
           if (imgRatio > pageRatio) {
-            renderHeight = pageWidth / imgRatio;
+            renderHeight = canvasWidth / imgRatio;
           } else {
-            renderWidth = pageHeight * imgRatio;
+            renderWidth = canvasHeight * imgRatio;
+          }
+          const xOffset = (canvasWidth - renderWidth) / 2;
+          const yOffset = (canvasHeight - renderHeight) / 2;
+
+          // Draw image at high resolution
+          ctx.drawImage(img, xOffset, yOffset, renderWidth, renderHeight);
+
+          // Draw text at scaled size for high resolution
+          if (config.enabled || config.extraText) {
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = config.fontColor;
+            
+            let fontStyle = "";
+            if (config.italic) fontStyle += "italic ";
+            if (config.bold) fontStyle += "bold ";
+            // Scale font size by the same factor
+            ctx.font = `${fontStyle}${config.fontSize * scale}px "${config.fontFamily}"`;
+
+            // Main text
+            if (config.enabled) {
+              const textX = xOffset + (config.x / 100) * renderWidth;
+              const textY = yOffset + (config.y / 100) * renderHeight;
+              ctx.fillText(name || config.sampleText || "", textX, textY);
+            }
+
+            // Extra text
+            if (config.extraText) {
+              const extraX = xOffset + ((config.extraX ?? 50) / 100) * renderWidth;
+              const extraY = yOffset + ((config.extraY ?? 60) / 100) * renderHeight;
+              ctx.fillText(config.extraText, extraX, extraY);
+            }
           }
 
-          const x = (pageWidth - renderWidth) / 2;
-          const y = (pageHeight - renderHeight) / 2;
-
-          pdf.addImage(finalImageData, "PNG", x, y, renderWidth, renderHeight);
+          // Convert high-res canvas to JPEG with compression for smaller file size
+          // Quality 0.92 = excellent quality but much smaller than PNG
+          const canvasImage = canvas.toDataURL("image/jpeg", 0.92);
+          pdf.addImage(canvasImage, "JPEG", 0, 0, pageWidth, pageHeight);
         }
 
         const pdfBlob = pdf.output("blob");
