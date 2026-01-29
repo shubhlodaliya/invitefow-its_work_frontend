@@ -46,7 +46,7 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
     images.map((_, index) => ({
       imageIndex: index,
       x: 50,
-      y: 50,
+      y: 35,
       fontSize: 24,
       designHeight: 850,
       renderHeight: 850,
@@ -71,8 +71,12 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
   const [isDragging, setIsDragging] = useState(false);
   const [draggingTarget, setDraggingTarget] = useState<'main' | 'extra' | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+  const [showExtraTextInput, setShowExtraTextInput] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const extraTextInputRef = useRef<HTMLInputElement>(null);
   const [renderMetrics, setRenderMetrics] = useState<{ rw: number; rh: number; offsetX: number; offsetY: number } | null>(null);
 
   const computeRenderMetrics = () => {
@@ -155,6 +159,24 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
   const handleMouseUp = () => {
     setIsDragging(false);
     setDraggingTarget(null);
+  };
+
+  const handleContainerMouseEnter = () => {
+    // Only enable zoom if there's text on the image
+    if (currentConfig.enabled || currentConfig.extraText) {
+      setIsHovering(true);
+    }
+  };
+
+  const handleContainerMouseLeave = () => {
+    setIsHovering(false);
+  };
+
+  const handleContainerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setCursorPos({ x, y });
   };
 
   const setExtraText = (value?: string) => {
@@ -274,7 +296,7 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                   {images.map((_, index) => (
                     <TabsTrigger key={index} value={index.toString()} className="relative">
                       Image {index + 1}
-                      {imageConfigs[index].enabled && imageConfigs[index].locked && (
+                      {((imageConfigs[index].enabled || imageConfigs[index].extraText) && imageConfigs[index].locked) && (
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />
                       )}
                     </TabsTrigger>
@@ -316,28 +338,51 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
               </div>
 
               <div
-                className={`relative bg-white border-2 rounded-lg overflow-hidden ${
+                className={`relative bg-white border-2 rounded-lg ${
                   currentConfig.enabled || currentConfig.extraText ? "border-gray-300" : "border-gray-200 opacity-50"
                 }`}
-                style={{ aspectRatio: "3/4", maxHeight: "850px", width: "100%" }}
-                onMouseMove={currentConfig.enabled || currentConfig.extraText ? handleMouseMove : undefined}
+                style={{ 
+                  aspectRatio: "3/4", 
+                  maxHeight: "850px", 
+                  width: "100%",
+                  overflow: isHovering ? "hidden" : "visible",
+                  cursor: isDragging ? "grabbing" : "grab"
+                }}
+                onMouseMove={(e) => {
+                  handleContainerMouseMove(e);
+                  if (currentConfig.enabled || currentConfig.extraText) handleMouseMove(e);
+                }}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                onMouseLeave={() => {
+                  handleContainerMouseLeave();
+                  handleMouseUp();
+                }}
+                onMouseEnter={handleContainerMouseEnter}
                 ref={containerRef}
               >
-                <img
-                  src={images[currentImageRealIndex]}
-                  alt={`Image ${currentImageIndex + 1}`}
-                  className="w-full h-full object-contain"
-                  ref={imgRef}
-                  onLoad={computeRenderMetrics}
-                />
-                {renderMetrics && (
-                  <>
-                    {currentConfig.enabled && (
-                      <svg
-                        className="absolute"
-                        style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh, pointerEvents: currentConfig.locked ? "none" : "auto" }}
+                {/* Zoom container */}
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    transform: isHovering ? `scale(1.5)` : "scale(1)",
+                    transformOrigin: `${cursorPos.x}% ${cursorPos.y}%`,
+                    transition: "transform 0.15s ease-out",
+                  }}
+                >
+                  <img
+                    src={images[currentImageRealIndex]}
+                    alt={`Image ${currentImageIndex + 1}`}
+                    className="w-full h-full object-contain"
+                    ref={imgRef}
+                    onLoad={computeRenderMetrics}
+                  />
+                  {renderMetrics && (
+                    <>
+                      {currentConfig.enabled && (
+                        <svg
+                          className="absolute"
+                          style={{ left: renderMetrics.offsetX, top: renderMetrics.offsetY, width: renderMetrics.rw, height: renderMetrics.rh, pointerEvents: currentConfig.locked ? "none" : "auto" }}
                       >
                         <text
                           x={`${currentConfig.x}%`}
@@ -382,8 +427,9 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                         </text>
                       </svg>
                     )}
-                  </>
-                )}
+                    </>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -501,18 +547,43 @@ export function NamePlacementEditor({ images, names, onNext, onBack }: NamePlace
                       સજોડે
                     </Button>
                     <Button
-                      variant={currentConfig.extraText && currentConfig.extraText !== "સર્વો" && currentConfig.extraText !== "સજોડે" ? "default" : "outline"}
+                      variant={showExtraTextInput ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setExtraText(currentConfig.extraText ? undefined : "")}
+                      onClick={() => {
+                        if (showExtraTextInput) {
+                          // Hide input and clear text
+                          setShowExtraTextInput(false);
+                          setExtraText(undefined);
+                        } else {
+                          // Show input with empty string
+                          setShowExtraTextInput(true);
+                          setExtraText("");
+                          // Focus after state update
+                          setTimeout(() => {
+                            extraTextInputRef.current?.focus();
+                            extraTextInputRef.current?.select();
+                          }, 0);
+                        }
+                      }}
                     >
                       Add text box
                     </Button>
                   </div>
-                  <Input
-                    value={currentConfig.extraText || ""}
-                    onChange={(e) => setExtraText(e.target.value || undefined)}
-                    placeholder="Write custom text"
-                  />
+                  {showExtraTextInput && (
+                    <Input
+                      ref={extraTextInputRef}
+                      type="text"
+                      value={currentConfig.extraText || ""}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExtraText(e.target.value || undefined)}
+                      placeholder="Write custom text"
+                      className="mt-2 border-2 border-blue-500 focus:border-blue-600"
+                      onBlur={() => {
+                        if (!currentConfig.extraText || currentConfig.extraText.trim() === "") {
+                          setShowExtraTextInput(false);
+                        }
+                      }}
+                    />
+                  )}
                 </div>
 
                 <Button

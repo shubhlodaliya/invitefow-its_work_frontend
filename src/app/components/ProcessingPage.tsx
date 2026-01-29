@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
@@ -42,6 +42,8 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedZipUrl, setGeneratedZipUrl] = useState<string | null>(null);
+  const [isCreatingZip, setIsCreatingZip] = useState(false);
+  const progressRef = useRef(0); // Track progress to ensure it only increases
 
   const namesCount = names.length;
 
@@ -55,6 +57,7 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
       setError(null);
       setIsComplete(false);
       setProgress(0);
+      progressRef.current = 0;
 
       // Ensure webfonts are available before rasterizing SVG to image
       await ensureFontsLoaded(imageConfigs);
@@ -66,6 +69,11 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
         const bOrder = b.order ?? b.imageIndex ?? 0;
         return aOrder - bOrder;
       });
+
+      // Process in batches to avoid memory exhaustion for large datasets
+      const batchSize = totalCards > 2000 ? 5 : totalCards > 500 ? 15 : totalCards > 100 ? 50 : 100;
+      const pagesPerName = orderedConfigs.length;
+      const totalItems = totalCards * pagesPerName;
 
       for (let i = 0; i < totalCards; i++) {
         const name = names[i];
@@ -85,8 +93,35 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
           const pageWidth = pdf.internal.pageSize.getWidth();
           const pageHeight = pdf.internal.pageSize.getHeight();
           
-          // Render at high resolution (4x) for quality, then scale down in PDF
-          const scale = 4;
+          // Adaptive resolution based on batch size to prevent memory issues
+          let scale: number;
+          if (totalCards > 2000) {
+            // 2000-3000 names: use 1.5x resolution (minimal memory)
+            scale = 1.5;
+          } else if (totalCards > 500) {
+            // 500-2000 names: use 2x resolution
+            scale = 2;
+          } else if (totalCards > 100) {
+            // 100-500 names: use 3x resolution
+            scale = 3;
+          } else {
+            // 1-100 names: use 4x resolution (best quality)
+            scale = 4;
+          }
+          
+          // Adjust JPEG quality based on batch size to manage file sizes and memory
+          let jpegQuality: number;
+          if (totalCards > 2000) {
+            // 2000-3000 names: quality 0.90
+            jpegQuality = 0.90;
+          } else if (totalCards > 500) {
+            // 500-2000 names: quality 0.92
+            jpegQuality = 0.92;
+          } else {
+            // 1-500 names: quality 0.95
+            jpegQuality = 0.95;
+          }
+
           const canvasWidth = pageWidth * scale;
           const canvasHeight = pageHeight * scale;
           
@@ -96,6 +131,10 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
           canvas.height = canvasHeight;
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("Canvas context not available");
+
+          // Enable high-quality rendering
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
 
           // Calculate image position to fit canvas
           const imgRatio = img.width / img.height;
@@ -141,22 +180,53 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
             }
           }
 
-          // Convert high-res canvas to JPEG with compression for smaller file size
-          // Quality 0.92 = excellent quality but much smaller than PNG
-          const canvasImage = canvas.toDataURL("image/jpeg", 0.92);
+          // Convert to JPEG with dynamic quality based on batch size
+          const canvasImage = canvas.toDataURL("image/jpeg", jpegQuality);
           pdf.addImage(canvasImage, "JPEG", 0, 0, pageWidth, pageHeight);
+
+          // Explicitly clean up canvas to free memory
+          ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+          canvas.width = 0;
+          canvas.height = 0;
+
+          // Update progress based on total items processed
+          // Only increase, never decrease
+          const itemsProcessed = i * pagesPerName + pageIndex + 1;
+          const currentProgress = Math.floor((itemsProcessed / totalItems) * 100);
+          if (currentProgress > progressRef.current) {
+            progressRef.current = currentProgress;
+            setProgress(currentProgress);
+          }
         }
 
         const pdfBlob = pdf.output("blob");
         zip.file(`${name}.pdf`, pdfBlob);
 
-        const currentProgress = Math.floor(((i + 1) / totalCards) * 100);
-        setProgress(currentProgress);
+        // Allow browser to process events and clear memory periodically
+        // Smaller batches for larger datasets
+        if ((i + 1) % batchSize === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          
+          // Force garbage collection hint for very large batches (3000 names)
+          if (totalCards > 1000) {
+            // Clear array references to help GC
+            if (typeof gc !== "undefined") {
+              gc();
+            }
+          }
+        }
       }
 
-      const zipBlob = await zip.generateAsync({ type: "blob" });
+      setIsCreatingZip(true);
+      const zipBlob = await zip.generateAsync({ 
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 }
+      });
       const zipUrl = URL.createObjectURL(zipBlob);
       setGeneratedZipUrl(zipUrl);
+      setIsCreatingZip(false);
+      progressRef.current = 100;
       setProgress(100);
       setIsComplete(true);
     } catch (err: any) {
@@ -181,8 +251,8 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <Card className="w-full max-w-2xl">
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
+      <Card className="w-full max-w-2xl bg-white shadow-lg">
         <CardContent className="p-8">
           {error ? (
             <div className="text-center space-y-6">
@@ -205,16 +275,24 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
                 <Loader2 className="h-16 w-16 text-blue-600 animate-spin" />
               </div>
               <div>
-                <h2 className="text-2xl mb-2">Generating PDFs...</h2>
-                <p className="text-gray-600">Please wait while we create your personalized cards</p>
+                <h2 className="text-2xl mb-2">
+                  {isCreatingZip ? "Creating ZIP file..." : "Generating PDFs..."}
+                </h2>
+                <p className="text-gray-600">
+                  {isCreatingZip 
+                    ? "Compressing all PDFs into a single file" 
+                    : "Please wait while we create your personalized cards"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Progress value={progress} className="h-3" />
                 <p className="text-sm text-gray-600">{progress}% Complete</p>
               </div>
-              <div className="text-sm text-gray-500">
-                Processing {Math.floor((progress / 100) * namesCount)} of {namesCount} cards
-              </div>
+              {!isCreatingZip && (
+                <div className="text-sm text-gray-500">
+                  Processing {Math.floor((progress / 100) * namesCount)} of {namesCount} cards
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center space-y-6">
