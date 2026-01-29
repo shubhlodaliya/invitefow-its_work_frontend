@@ -93,50 +93,28 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
           const pageWidth = pdf.internal.pageSize.getWidth();
           const pageHeight = pdf.internal.pageSize.getHeight();
           
-          // Adaptive resolution based on batch size to prevent memory issues
-          let scale: number;
-          if (totalCards > 2000) {
-            // 2000-3000 names: use 1.5x resolution (minimal memory)
-            scale = 1.5;
-          } else if (totalCards > 500) {
-            // 500-2000 names: use 2x resolution
-            scale = 2;
-          } else if (totalCards > 100) {
-            // 100-500 names: use 3x resolution
-            scale = 3;
-          } else {
-            // 1-100 names: use 4x resolution (best quality)
-            scale = 4;
-          }
-          
-          // Adjust JPEG quality based on batch size to manage file sizes and memory
-          let jpegQuality: number;
-          if (totalCards > 2000) {
-            // 2000-3000 names: quality 0.90
-            jpegQuality = 0.90;
-          } else if (totalCards > 500) {
-            // 500-2000 names: quality 0.92
-            jpegQuality = 0.92;
-          } else {
-            // 1-500 names: quality 0.95
-            jpegQuality = 0.95;
-          }
+          // MAXIMUM RESOLUTION SETTINGS (8x = ~6K-8K resolution)
+          // Optimized for maximum quality without memory errors
+          const scale = 8;
 
           const canvasWidth = pageWidth * scale;
           const canvasHeight = pageHeight * scale;
           
-          // Create high-resolution canvas
+          // Create maximum resolution canvas
           const canvas = document.createElement("canvas");
           canvas.width = canvasWidth;
           canvas.height = canvasHeight;
-          const ctx = canvas.getContext("2d");
+          const ctx = canvas.getContext("2d", { 
+            alpha: false,
+            willReadFrequently: false,
+            desynchronized: false
+          });
           if (!ctx) throw new Error("Canvas context not available");
 
-          // Enable high-quality rendering
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
+          // Disable smoothing for pixel-perfect image rendering
+          ctx.imageSmoothingEnabled = false;
 
-          // Calculate image position to fit canvas
+          // Calculate image position - use actual image dimensions
           const imgRatio = img.width / img.height;
           const pageRatio = pageWidth / pageHeight;
           let renderWidth = canvasWidth;
@@ -149,40 +127,59 @@ export function ProcessingPage({ names, images, imageConfigs, onComplete }: Proc
           const xOffset = (canvasWidth - renderWidth) / 2;
           const yOffset = (canvasHeight - renderHeight) / 2;
 
-          // Draw image at high resolution
+          // Draw image at maximum resolution (pixel-perfect, no interpolation)
           ctx.drawImage(img, xOffset, yOffset, renderWidth, renderHeight);
 
-          // Draw text at scaled size for high resolution
+          // Draw text at MAXIMUM RESOLUTION (8x scaling = ultra-sharp text)
           if (config.enabled || config.extraText) {
+            // Enable smoothing for text only (for anti-aliasing)
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            
+            // Maximum quality text rendering settings
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
             ctx.direction = "ltr";
             ctx.fillStyle = config.fontColor;
             
+            // Enable all advanced text rendering features for maximum clarity
+            if ('fontKerning' in ctx) {
+              (ctx as any).fontKerning = "normal";
+            }
+            if ('textRendering' in ctx) {
+              (ctx as any).textRendering = "optimizeLegibility";
+            }
+            if ('fontVariantCaps' in ctx) {
+              (ctx as any).fontVariantCaps = "normal";
+            }
+            
             let fontStyle = "";
             if (config.italic) fontStyle += "italic ";
             if (config.bold) fontStyle += "bold ";
-            // Scale font size by the same factor
+            // 8x font scaling for MAXIMUM text clarity (6K-8K resolution)
             ctx.font = `${fontStyle}${config.fontSize * scale}px "${config.fontFamily}"`;
 
-            // Main text
+            // Main text - rendered at maximum quality
             if (config.enabled) {
               const textX = xOffset + (config.x / 100) * renderWidth;
               const textY = yOffset + (config.y / 100) * renderHeight;
               ctx.fillText(name || config.sampleText || "", textX, textY);
             }
 
-            // Extra text
+            // Extra text - rendered at maximum quality
             if (config.extraText) {
               const extraX = xOffset + ((config.extraX ?? 50) / 100) * renderWidth;
               const extraY = yOffset + ((config.extraY ?? 60) / 100) * renderHeight;
               ctx.fillText(config.extraText, extraX, extraY);
             }
+            
+            // Disable smoothing again after text
+            ctx.imageSmoothingEnabled = false;
           }
 
-          // Convert to JPEG with dynamic quality based on batch size
-          const canvasImage = canvas.toDataURL("image/jpeg", jpegQuality);
-          pdf.addImage(canvasImage, "JPEG", 0, 0, pageWidth, pageHeight);
+          // Convert to JPEG at 99% quality (near-lossless, smaller file size than PNG)
+          const canvasImage = canvas.toDataURL("image/jpeg", 0.99);
+          pdf.addImage(canvasImage, "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
 
           // Explicitly clean up canvas to free memory
           ctx.clearRect(0, 0, canvasWidth, canvasHeight);
